@@ -24,18 +24,12 @@ def is_admin ():
 def run_as_admin ():
     ctypes .windll .shell32 .ShellExecuteW (None ,"runas",sys .executable ," ".join (sys .argv ),None ,1 )
 
-def get_base_dir():
+def get_base_dir ():
     """Get the base directory of the application."""
-    # For PyInstaller
-    if hasattr(sys, '_MEIPASS'):
-        return sys._MEIPASS
-    # For Nuitka or source
-    return os.path.dirname(os.path.abspath(sys.argv[0] if sys.argv[0] else __file__))
-
-def log_error(error):
-    """Log error to a file for debugging."""
-    with open(os.path.join(get_base_dir(), 'crash_log.txt'), 'a', encoding='utf-8') as f:
-        f.write(f"[{datetime.now()}] {error}\n")
+    try :
+        return sys ._MEIPASS 
+    except :
+        return os .path .dirname (os .path .abspath (__file__ ))
 
 def get_scripts_dir ():
     return os .path .join (get_base_dir (),'scripts')
@@ -346,28 +340,15 @@ class Window (FluentWindow ):
 
 
 
-if __name__ == '__main__':
-    try:
-        # Handle Ctrl+C gracefully
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
-        
-        if not is_admin():
-            run_as_admin()
-            sys.exit()
-        
-        QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-        app = QApplication(sys.argv)
-        
-        # Check for qfluentwidgets resources
-        try:
-            from qfluentwidgets import Theme
-        except Exception as e:
-            log_error(f"Failed to import qfluentwidgets resources: {e}")
-            raise
-            
-        Window().show()
-        sys.exit(app.exec())
-    except Exception as e:
-        import traceback
-        log_error(f"Uncaught exception: {e}\n{traceback.format_exc()}")
-        raise
+if __name__ =='__main__':
+
+    signal .signal (signal .SIGINT ,signal .SIG_DFL )
+
+    if not is_admin ():
+        run_as_admin ()
+        sys .exit ()
+
+    QApplication .setHighDpiScaleFactorRoundingPolicy (Qt .HighDpiScaleFactorRoundingPolicy .PassThrough )
+    app =QApplication (sys .argv )
+    Window ().show ()
+    app .exec ()
