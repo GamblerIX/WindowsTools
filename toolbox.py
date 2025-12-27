@@ -1,20 +1,17 @@
 import sys
 import os
 import ctypes
-import re
 import glob
 import signal
 import shutil
-import atexit
 from datetime import datetime
-from PySide6.QtCore import Qt, QUrl, QProcess, QTimer, Signal, QSize, QProcessEnvironment
-from PySide6.QtGui import QIcon, QTextCursor, QColor, QTextCharFormat, QFont
+from PySide6.QtCore import Qt, QProcess, Signal, QProcessEnvironment
+from PySide6.QtGui import QTextCursor, QColor, QTextCharFormat
 from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QTextEdit
 
 from qfluentwidgets import (setTheme, Theme, FluentWindow, SubtitleLabel, CaptionLabel,
                             PrimaryPushButton, PushButton, FluentIcon as FIF, CardWidget, IconWidget,
-                            BodyLabel, InfoBar, InfoBarPosition, SmoothScrollArea,
-                            NavigationItemPosition, isDarkTheme)
+                            BodyLabel, InfoBar, SmoothScrollArea, NavigationItemPosition)
 
 # ==================== Utility Functions ====================
 

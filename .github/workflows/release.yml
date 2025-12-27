@@ -1,0 +1,84 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release Version (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt nuitka zstandard
+
+    - name: Handle existing Tag and Release
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $version = "${{ github.event.inputs.version }}"
+        $release = gh release view $version --json tagName 2>$null
+        if ($null -ne $release) {
+          echo "Deleting existing release and tag $version..."
+          gh release delete $version --yes
+          git push --delete origin $version
+        }
+
+    - name: Pre-process Code (Remove Comments)
+      run: |
+        python remove.py
+
+    - name: Build with Nuitka
+      run: |
+        python -m nuitka --onefile --standalone --windows-disable-console --enable-plugin=pyside6 --include-dir=scripts --include-data-file=logo.png=logo.png --output-dir=build toolbox.py
+
+    - name: Rename executable
+      shell: pwsh
+      run: |
+        mv build/toolbox.exe build/WindowsTools-${{ github.event.inputs.version }}.exe
+
+    - name: Get Changelog
+      id: changelog
+      shell: pwsh
+      run: |
+        $version = "${{ github.event.inputs.version }}"
+        $changelogFile = "docs/Changelog/$version.md"
+        if (Test-Path $changelogFile) {
+          $content = Get-Content $changelogFile -Raw
+          echo "CHANGELOG_CONTENT<<EOF" >> $env:GITHUB_ENV
+          echo "$content" >> $env:GITHUB_ENV
+          echo "EOF" >> $env:GITHUB_ENV
+        } else {
+          echo "CHANGELOG_CONTENT=Release $version" >> $env:GITHUB_ENV
+        }
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.event.inputs.version }}
+        name: ${{ github.event.inputs.version }}
+        body: ${{ env.CHANGELOG_CONTENT }}
+        files: build/WindowsTools-${{ github.event.inputs.version }}.exe
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -6,14 +6,19 @@ __pycache__/
 dist/
 build/
 *.spec
+*.exe
 
 # Testing / Coverage
 .coverage
 htmlcov/
+test/htmlcov/
 .pytest_cache/
 nosetests.xml
 coverage.xml
 *.cover
+
+# Temporary files
+tmp/
 
 # Environments
 .venv/

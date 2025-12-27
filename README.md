@@ -59,6 +59,20 @@ python toolbox.py
 - **单元测试**: `python test/test_utils.py` (验证元数据解析、目录管理等核心逻辑，已实现 100% 覆盖率)
 - **模拟脚本**: `test/mock_script.bat` (用于手动验证 UI 显示和环境传递)
 
+## GitHub 工作流
+
+本项目包含两个自动化工作流：
+
+1.  🚀 **CI (持续集成)**: 每次提交代码或提交 PR 时自动触发。
+    - 运行全量单元测试并生成覆盖率报告。
+    - 验证 PyInstaller 打包流程的可行性。
+2.  📦 **Build and Release (自动发布)**: 手动在 GitHub Action 页面触发。
+    - 输入版本号（如 `v1.0.0`）。
+    - 自动清理代码注释（保留元数据）。
+    - 使用 **Nuitka** 编译高性能、高压缩的单文件 `.exe`。
+    - 自动关联 `docs/Changelog` 下的发布说明并发布到 Release。
+
+
 ---
 
 ## 许可证
