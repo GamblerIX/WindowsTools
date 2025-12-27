@@ -1,80 +1,85 @@
 import os
-import re
+import tokenize
+import io
+
+def remove_python_comments(source):
+    """使用 tokenize 安全地移除 Python 注释，不会破坏字符串中的 # 字符。"""
+    try:
+        result = []
+        g = tokenize.generate_tokens(io.StringIO(source).readline)
+        for toktype, tokval, _, _, _ in g:
+            if toktype == tokenize.COMMENT:
+                continue
+            result.append((toktype, tokval))
+        return tokenize.untokenize(result)
+    except Exception as e:
+        print(f"Tokenize failed: {e}, falling back to original.")
+        return source
 
 def remove_comments_from_file(filepath):
     ext = os.path.splitext(filepath)[1].lower()
     
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-        lines = f.readlines()
-    
-    new_lines = []
+        content = f.read()
     
     if ext == '.py':
-        for line in lines:
-            stripped = line.strip()
-            # Preserve shebang or encoding
-            if stripped.startswith('#!') or stripped.startswith('# -*-'):
-                new_lines.append(line)
-            # Remove full line comments
-            elif stripped.startswith('#'):
-                continue
-            else:
-                # Remove inline comments (simple version)
-                # This could be improved for strings, but for this project's scripts it should be fine
-                if '#' in line:
-                    parts = line.split('#', 1)
-                    # Check if # is inside quotes (very basic check)
-                    if not ('"' in parts[0] or "'" in parts[0]):
-                        new_lines.append(parts[0].rstrip() + '\n')
-                    else:
-                        new_lines.append(line)
-                else:
-                    new_lines.append(line)
-                    
+        # Preserve shebang
+        shebang = ""
+        if content.startswith('#!'):
+            lines = content.splitlines(True)
+            shebang = lines[0]
+            content = "".join(lines[1:])
+        
+        new_content = shebang + remove_python_comments(content)
+        
     elif ext == '.ps1':
+        lines = content.splitlines(True)
+        new_lines = []
+        metadata_count = 0
         for i, line in enumerate(lines):
-            # Preserve first 2 lines if they are comments (metadata)
-            if i < 2 and line.strip().startswith('#'):
+            stripped = line.strip()
+            # Preserve first 2 lines of metadata
+            if metadata_count < 2 and stripped.startswith('#'):
                 new_lines.append(line)
+                metadata_count += 1
                 continue
             
-            stripped = line.strip()
-            if stripped.startswith('#'):
-                continue
-            else:
-                # Inline comments removal
-                if '#' in line:
-                    parts = line.split('#', 1)
-                    if not ('"' in parts[0] or "'" in parts[0]):
-                        new_lines.append(parts[0].rstrip() + '\n')
-                    else:
-                        new_lines.append(line)
-                else:
-                    new_lines.append(line)
+            # Very simple logic for ps1: only remove lines starting with #
+            # Avoid inline comment removal to be safe with quoted strings
+            if not stripped.startswith('#'):
+                new_lines.append(line)
+        new_content = "".join(new_lines)
                     
     elif ext in ['.bat', '.cmd']:
+        lines = content.splitlines(True)
+        new_lines = []
+        metadata_count = 0
         for i, line in enumerate(lines):
-            # Preserve first 2 lines if they are comments (metadata for UI)
-            stripped_upper = line.strip().upper()
-            if i < 2 and (line.strip().startswith('::') or stripped_upper.startswith('REM ')):
+            stripped = line.strip()
+            stripped_upper = stripped.upper()
+            is_comment = stripped.startswith('::') or stripped_upper.startswith('REM ')
+            
+            # Preserve first 2 lines of metadata
+            if is_comment and metadata_count < 2:
                 new_lines.append(line)
+                metadata_count += 1
                 continue
             
-            if line.strip().startswith('::') or stripped_upper.startswith('REM '):
-                continue
-            else:
+            if not is_comment:
                 new_lines.append(line)
+        new_content = "".join(new_lines)
     else:
-        return # Skip other files
+        return
         
     with open(filepath, 'w', encoding='utf-8') as f:
-        f.writelines(new_lines)
+        f.write(new_content)
 
 def process_directory(directory):
     for root, dirs, files in os.walk(directory):
+        # Skip hidden dirs like .git or .github
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
         for file in files:
             if file.endswith(('.py', '.ps1', '.bat', '.cmd')):
-                # Don't process this script itself
                 if file == 'remove.py':
                     continue
                 filepath = os.path.join(root, file)
@@ -82,6 +87,5 @@ def process_directory(directory):
                 remove_comments_from_file(filepath)
 
 if __name__ == "__main__":
-    # Process current directory and scripts
     base_dir = os.path.dirname(os.path.abspath(__file__))
     process_directory(base_dir)

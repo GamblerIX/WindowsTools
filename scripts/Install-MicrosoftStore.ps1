@@ -1,7 +1,6 @@
 # 安装 Microsoft Store
 # 为系统安装或修复微软商店组件
 
-# 自提权逻辑
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "正在请求管理员权限..." -ForegroundColor Yellow
     Start-Process -FilePath pwsh.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs -ErrorAction SilentlyContinue
@@ -15,7 +14,6 @@ Write-Host "  Microsoft Store 安装/修复脚本" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 检查是否已安装
 $existingStore = Get-AppxPackage -Name "Microsoft.WindowsStore" -ErrorAction SilentlyContinue
 if ($existingStore) {
     Write-Host "检测到系统已安装 Microsoft Store (版本: $($existingStore.Version))。" -ForegroundColor Green

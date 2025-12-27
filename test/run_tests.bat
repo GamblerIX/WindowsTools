@@ -13,7 +13,6 @@ echo.
 echo Test Coverage Report:
 python -m coverage report --rcfile=test/.coveragerc --include=toolbox.py -m
 
-:: 生成 HTML 报告
 python -m coverage html --rcfile=test/.coveragerc
 
 echo.

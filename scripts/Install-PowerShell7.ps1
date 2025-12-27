@@ -1,7 +1,6 @@
 # 安装 PowerShell 7
 # 一键安装或更新至最新稳定版 PowerShell 7
 
-# 自提权逻辑
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "正在请求管理员权限..." -ForegroundColor Yellow
     Start-Process -FilePath pwsh.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs -ErrorAction SilentlyContinue
