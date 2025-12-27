@@ -1,0 +1,23 @@
+[run]
+source = .
+omit =
+    test/*
+    setup.py
+    */__init__.py
+
+[report]
+show_missing = True
+precision = 2
+ignore_errors = True
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__.:
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+
+[html]
+directory = test/htmlcov
+ignore_errors = True

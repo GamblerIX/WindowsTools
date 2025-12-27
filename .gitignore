@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.spec
+
+# Testing / Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Local configuration
+.env
+.vscode/
+.idea/
