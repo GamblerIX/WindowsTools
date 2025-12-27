@@ -62,7 +62,7 @@ jobs:
 
     - name: Build with Nuitka
       run: |
-        python -m nuitka --onefile --standalone --windows-disable-console --enable-plugin=pyside6 --include-data-dir=scripts=scripts --include-data-file=logo.png=logo.png --output-dir=build toolbox.py
+        python -m nuitka --onefile --standalone --windows-console-mode=disable --enable-plugin=pyside6 --include-data-dir=scripts=scripts --include-data-file=logo.png=logo.png --output-dir=build --assume-yes-for-downloads toolbox.py
 
     - name: Rename executable
       shell: pwsh
