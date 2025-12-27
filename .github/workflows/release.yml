@@ -35,13 +35,26 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
+        $ErrorActionPreference = 'Continue'
         $version = "${{ github.event.inputs.version }}"
-        $release = gh release view $version --json tagName 2>$null
-        if ($null -ne $release) {
-          echo "Deleting existing release and tag $version..."
-          gh release delete $version --yes
-          git push --delete origin $version
+        
+        # Check if release exists and delete it
+        $releaseExists = gh release view $version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+          Write-Host "Deleting existing release $version..."
+          gh release delete $version --yes --cleanup-tag
+        } else {
+          Write-Host "No existing release found for $version"
         }
+        
+        # Check if tag exists and delete it
+        $tagExists = git ls-remote --tags origin "refs/tags/$version"
+        if ($tagExists) {
+          Write-Host "Deleting existing tag $version..."
+          git push --delete origin $version 2>&1 | Out-Null
+        }
+        
+        exit 0
 
     - name: Pre-process Code (Remove Comments)
       run: |
@@ -49,12 +62,13 @@ jobs:
 
     - name: Build with Nuitka
       run: |
-        python -m nuitka --onefile --standalone --windows-disable-console --enable-plugin=pyside6 --include-dir=scripts --include-data-file=logo.png=logo.png --output-dir=build toolbox.py
+        python -m nuitka --onefile --standalone --windows-disable-console --enable-plugin=pyside6 --include-data-dir=scripts=scripts --include-data-file=logo.png=logo.png --output-dir=build toolbox.py
 
     - name: Rename executable
       shell: pwsh
       run: |
-        mv build/toolbox.exe build/WindowsTools-${{ github.event.inputs.version }}.exe
+        $version = "${{ github.event.inputs.version }}"
+        Move-Item -Path "build/toolbox.exe" -Destination "build/WindowsTools-$version.exe" -Force
 
     - name: Get Changelog
       id: changelog
@@ -64,11 +78,11 @@ jobs:
         $changelogFile = "docs/Changelog/$version.md"
         if (Test-Path $changelogFile) {
           $content = Get-Content $changelogFile -Raw
-          echo "CHANGELOG_CONTENT<<EOF" >> $env:GITHUB_ENV
-          echo "$content" >> $env:GITHUB_ENV
-          echo "EOF" >> $env:GITHUB_ENV
+          "CHANGELOG_CONTENT<<EOF" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $content | Out-File -FilePath $env:GITHUB_ENV -Append
+          "EOF" | Out-File -FilePath $env:GITHUB_ENV -Append
         } else {
-          echo "CHANGELOG_CONTENT=Release $version" >> $env:GITHUB_ENV
+          "CHANGELOG_CONTENT=Release $version" | Out-File -FilePath $env:GITHUB_ENV -Append
         }
 
     - name: Create Release
