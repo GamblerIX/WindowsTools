@@ -1,80 +1,81 @@
-# Windows LTSC工具集
+# 🛠️ Windows LTSC 工具箱
 
-本项目包含一组用于 Windows LTSC 系统优化和工具安装的脚本，集成在图形化工具箱中。
+本项目是一个专为 **Windows LTSC** 及 **Server** 系列系统设计的开源工具集，旨在解决这些精简版系统中常见的组件缺失问题（如 Microsoft Store 和 Windows Terminal），并提供一键式系统优化。
 
-> 基于 `PySide6` 和 `Fluent Widgets` 开发的图形化界面，方便一键调用各项工具。
+> **✨ 特色**：基于 `PySide6` 和 `Fluent Widgets` 的现代化 UI，支持多任务并发执行，实时查看详细日志。
 
-## 系统要求
-- Windows 10 LTSC / Windows 11 LTSC / Windows Server 2019+
-- 管理员权限
-- 网络连接（部分功能）
+---
 
+## 🖥️ 系统支持
+
+本项目针对以下版本进行了适配：
+- **Windows LTSC**: 2019, 2021, 2024
+- **Windows Server**: 2019, 2022, 2025
+
+| 组件 | LTSC 2019 | LTSC 2021 | LTSC 2024 | Server 2022/2025 |
+| :--- | :---: | :---: | :---: | :---: |
+| PowerShell 7 | ✅ | ✅ | ✅ | ✅ |
+| Windows Terminal | ✅ | ✅ | ✅ | ✅ |
+| Microsoft Store | ✅ | ✅ | ✅ | ✅ |
+| 系统优化脚本 | ✅ | ✅ | ✅ | ✅ |
+
+> **注意**：
+> 系统优化脚本仅提供基础优化，不保证所有系统都能正常工作。
+>
 > 对于非 LTSC/Server 系统，脚本不一定生效。
 
-## 快速使用
+---
 
-1. 从[Releases](https://github.com/GamblerIX/WindowsTools/releases)下载已打包好的工具箱
-2. 双击下载的 `WindowsTools.exe` 
+## 🚀 核心工具
+
+您可以点击相关文档了解更多细节：
+
+1.  💻 [**Windows Terminal 安装**](docs/windows-terminal.md): 支持所有 LTSC 版本，**自动处理 Microsoft.UI.Xaml 依赖**。
+2.  🛍️ [**Microsoft Store 安装**](docs/microsoft-store.md): 一键恢复 LTSC 系统缺失的应用商店。
+3.  🐚 [**PowerShell 7 安装**](docs/powershell7.md): 自动获取最新稳定版本并配置环境。
+4.  🌍 [**UTF-8 支持启用**](docs/utf8-support.md): 全局开启 Beta 版 UTF-8 编码支持，解决古老脚本乱码问题。
+5.  🔕 [**安全通知禁用**](docs/security-notifications.md): 一键关闭 Windows Security Center 的烦人通知。
 
 ---
 
-## 从源码运行
+## 🛠️ 从源码运行
 
 ### 运行环境
-- Python 3.9+
+- Python 3.11+ (已验证兼容 Python 3.13)
+- 管理员权限
 
-### 克隆源码并运行
-
-```
+### 快速启动
+```powershell
+# 克隆仓库
 git clone https://github.com/GamblerIX/WindowsTools.git
+cd WindowsTools
+
+# 安装依赖
 pip install -r requirements.txt
-python toolbox.py
+
+# 启动工具箱 (会自动申请管理员权限)
+python main.py
 ```
 
-### 缓存管理
-- 下载文件缓存在 `WindowsTools/tmp` 目录下
-- 如果缓存中已有完整的下载文件，将直接使用，无需重复下载
-- GUI 正常关闭时自动清理缓存目录
+---
+
+## 🧪 开发与测试
+
+本项目保持高质量的代码标准：
+- **单元测试**: `python test/test_utils.py` (核心工具库 100% 覆盖率)。
+- **代码覆盖率**:
+  - 运行并生成报告：双击 `test/run_tests.bat`。
+  - 查看网页版：打开 `test/htmlcov/index.html`。
 
 ---
 
-## 工具详细介绍
+## 🤖 GitHub 工作流
 
-您可以点击下方链接查看各工具的详细功能及工作原理：
-
-- 🚀 [**PowerShell 7 安装工具**](docs/powershell7.md)
-- 🛍️ [**Microsoft Store 安装工具**](docs/microsoft-store.md)
-- 💻 [**Windows Terminal 安装工具**](docs/windows-terminal.md)
+本项目配置了自动化流程：
+- 🚀 **CI (持续集成)**: 每次提交自动运行单元测试并验证 Python 环境。
 
 ---
 
-## 开发与测试
-
-本项目包含自动化测试脚本，支持输出代码覆盖率：
-
-- **运行测试并输出覆盖率**: 双击运行 `test/run_tests.bat` 或在终端运行 `python -m coverage run --rcfile=test/.coveragerc -m unittest discover -s test`
-- **查看覆盖率报告**: 
-  - 命令行：`python -m coverage report --rcfile=test/.coveragerc`
-  - HTML 报告：查看 `test/htmlcov/index.html`
-- **单元测试**: `python test/test_utils.py` (验证元数据解析、目录管理等核心逻辑，已实现 100% 覆盖率)
-- **模拟脚本**: `test/mock_script.bat` (用于手动验证 UI 显示和环境传递)
-
-## GitHub 工作流
-
-本项目包含两个自动化工作流：
-
-1.  🚀 **CI (持续集成)**: 每次提交代码或提交 PR 时自动触发。
-    - 运行全量单元测试并生成覆盖率报告。
-    - 验证 PyInstaller 打包流程的可行性。
-2.  📦 **Build and Release (自动发布)**: 手动在 GitHub Action 页面触发。
-    - 输入版本号（如 `v1.0.0`）。
-    - 自动清理代码注释（保留元数据）。
-    - 使用 **Nuitka** 编译高性能、高压缩的单文件 `.exe`。
-    - 自动关联 `docs/Changelog` 下的发布说明并发布到 Release。
-
-
----
-
-## 许可证
+## ⚖️ 许可证
 
 本项目采用 [GNU AGPL v3](LICENSE) 许可证。
