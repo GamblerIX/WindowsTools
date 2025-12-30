@@ -35,6 +35,9 @@
 3.  🐚 [**PowerShell 7 安装**](docs/powershell7.md): 自动获取最新稳定版本并配置环境。
 4.  🌍 [**UTF-8 支持启用**](docs/utf8-support.md): 全局开启 Beta 版 UTF-8 编码支持，解决古老脚本乱码问题。
 5.  🔕 [**安全通知禁用**](docs/security-notifications.md): 一键关闭 Windows Security Center 的烦人通知。
+6.  🔓 [**服务器安全策略优化**](docs/server-security.md): 禁用密码过期、复杂度检查及 Ctrl+Alt+Delete 登录要求。
+7.  🛡️ [**UAC 提示禁用**](docs/uac-prompt.md): 禁用管理员操作的 UAC 弹窗提示，适用于服务器自动化场景。
+8.  🚫 [**应用拦截禁用**](docs/app-blocking.md): 全面禁用 SmartScreen、证书吊销检查等拦截机制，解决签名证书被吊销的问题。
 
 ---
 
