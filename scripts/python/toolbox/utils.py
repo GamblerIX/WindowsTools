@@ -25,12 +25,16 @@ def run_as_admin():
 
 
 def get_base_dir():
-    """Get the base directory of the application."""
-    # For PyInstaller
+    """获取脚本基础目录（项目根目录）"""
+    # 如果是 PyInstaller 打包后的运行环境
     if hasattr(sys, '_MEIPASS'):
         return sys._MEIPASS
-    # For Nuitka or source
-    return os.path.dirname(os.path.abspath(sys.argv[0] if sys.argv[0] else __file__))
+    
+    # 源代码运行环境，toolbox 位于 scripts/python/toolbox/utils.py
+    # 我们向上查找三级目录以到达项目根目录
+    current_file = os.path.abspath(__file__)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
+    return base_dir
 
 
 def log_error(error):
@@ -123,10 +127,10 @@ def scan_scripts():
     for filepath in unique_files:
         basename = os.path.basename(filepath).lower()
         
-        # 排除副本（同名的 .ps1 和 .bat，优先保留 .ps1）
-        if basename.endswith('.ps1') and os.path.exists(filepath.replace('.ps1', '.bat')):
-            continue
+        # 排除副本（同名的 .ps1 和 .bat/.cmd，优先保留 .ps1）
         if basename.endswith('.bat') and os.path.exists(filepath.replace('.bat', '.ps1')):
+            continue
+        if basename.endswith('.cmd') and (os.path.exists(filepath.replace('.cmd', '.ps1')) or os.path.exists(filepath.replace('.cmd', '.bat'))):
             continue
 
         title, desc = parse_script_metadata(filepath)

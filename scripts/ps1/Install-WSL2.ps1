@@ -94,73 +94,90 @@ try {
         exit 0
     }
 
-    # 3. 如果支持 WSL2，从 GitHub Releases 下载并安装
+    # 3. 如果支持 WSL2，检查是否已安装并配置
     if ($isWSL2Supported) {
         Write-Status "正在配置 WSL2..." -Color White
         
-        $tmpDir = if ($env:TOOLBOX_TMP_DIR) { $env:TOOLBOX_TMP_DIR } else { $env:TEMP }
-        $downloadUrl = $null
-        $outFileName = $null
-        
-        # 尝试从 GitHub API 获取最新版本
-        Write-Status "从 GitHub Releases 获取最新版本信息..." -Color Gray
-        $release = Get-GitHubLatestRelease -Owner "microsoft" -Repo "WSL"
-        
-        if ($release) {
-            $latestVersion = $release.tag_name
-            Write-Status "最新 WSL 版本: $latestVersion" -Color Cyan
-            
-            # 查找 x64 MSI 安装包
-            $asset = $release.assets | Where-Object { $_.name -match 'wsl.*\.x64\.msi$' -or $_.name -match 'x64\.msi$' } | Select-Object -First 1
-            
-            if (-not $asset) {
-                $asset = $release.assets | Where-Object { $_.name -match '\.msi$' -and $_.name -match 'x64' } | Select-Object -First 1
-            }
-            
-            if ($asset) {
-                $downloadUrl = $asset.browser_download_url
-                $outFileName = $asset.name
-                $sizeMB = [math]::Round($asset.size / 1MB, 2)
-                Write-Status "安装包: $outFileName ($sizeMB MB)" -Color Gray
-            }
-        }
-        
-        # 如果 GitHub API 失败，使用备选 URL
-        if (-not $downloadUrl) {
-            Write-Status "GitHub API 不可用，使用备选下载地址..." -Color Yellow
-            $downloadUrl = $FallbackWSLUrl
-            $outFileName = [System.IO.Path]::GetFileName($FallbackWSLUrl)
-            Write-Status "备选安装包: $outFileName" -Color Gray
-        }
-        
-        # 下载并安装
-        $outFile = Join-Path $tmpDir $outFileName
-        Write-Status "正在下载..." -Color Yellow
-        
-        if (Invoke-DownloadWithRetry -Url $downloadUrl -OutFile $outFile) {
-            Write-Status "正在安装 WSL..." -Color Gray
-            Start-Process msiexec.exe -ArgumentList "/i `"$outFile`" /quiet /norestart" -Wait
-            Write-Status "WSL 安装成功。" -Color Green
+        # 检查 wsl.exe 是否已存在（通常意味着 WSL 已安装）
+        $wslPath = Get-Command wsl.exe -ErrorAction SilentlyContinue
+        if ($wslPath) {
+            Write-Status "检测到 WSL 已安装，跳过核心组件安装。" -Color Gray
         } else {
-            Write-ErrorAndExit "下载 WSL 安装包失败，请检查网络连接。"
+            $tmpDir = if ($env:TOOLBOX_TMP_DIR) { $env:TOOLBOX_TMP_DIR } else { $env:TEMP }
+            $downloadUrl = $null
+            $outFileName = $null
+            
+            # 尝试从 GitHub API 获取最新版本
+            Write-Status "从 GitHub Releases 获取最新版本信息..." -Color Gray
+            $release = Get-GitHubLatestRelease -Owner "microsoft" -Repo "WSL"
+            
+            if ($release) {
+                $latestVersion = $release.tag_name
+                Write-Status "最新 WSL 版本: $latestVersion" -Color Cyan
+                
+                # 查找 x64 MSI 安装包
+                $asset = $release.assets | Where-Object { $_.name -match 'wsl.*\.x64\.msi$' -or $_.name -match 'x64\.msi$' } | Select-Object -First 1
+                
+                if (-not $asset) {
+                    $asset = $release.assets | Where-Object { $_.name -match '\.msi$' -and $_.name -match 'x64' } | Select-Object -First 1
+                }
+                
+                if ($asset) {
+                    $downloadUrl = $asset.browser_download_url
+                    $outFileName = $asset.name
+                    $sizeMB = [math]::Round($asset.size / 1MB, 2)
+                    Write-Status "安装包: $outFileName ($sizeMB MB)" -Color Gray
+                }
+            }
+            
+            # 如果 GitHub API 失败，使用备选 URL
+            if (-not $downloadUrl) {
+                Write-Status "GitHub API 不可用，使用备选下载地址..." -Color Yellow
+                $downloadUrl = $FallbackWSLUrl
+                $outFileName = [System.IO.Path]::GetFileName($FallbackWSLUrl)
+                Write-Status "备选安装包: $outFileName" -Color Gray
+            }
+            
+            # 下载并安装
+            $outFile = Join-Path $tmpDir $outFileName
+            Write-Status "正在下载..." -Color Yellow
+            
+            if (Invoke-DownloadWithRetry -Url $downloadUrl -OutFile $outFile) {
+                Write-Status "正在安装 WSL..." -Color Gray
+                Start-Process msiexec.exe -ArgumentList "/i `"$outFile`" /quiet /norestart" -Wait
+                Write-Status "WSL 安装成功。" -Color Green
+            } else {
+                Write-ErrorAndExit "下载 WSL 安装包失败，请检查网络连接。"
+            }
         }
         
-        # 设置 WSL2 为默认版本
+        # 设置 WSL2 为默认版本（无论是否新安装，都确保配置正确）
         try {
-            wsl.exe --set-default-version 2 | Out-Null
-            Write-Status "WSL2 已成功设置为默认版本。" -Color Green
+            $currentStatus = wsl.exe --status 2>$null
+            if ($null -eq $currentStatus -or $currentStatus -match "2") {
+                # 已经是 2 或者无法读取状态，尝试设置以防万一
+                wsl.exe --set-default-version 2 | Out-Null
+                Write-Status "WSL2 已设置为默认版本。" -Color Green
+            }
         }
         catch {
-            Write-Status "设置默认版本失败，请手动运行: wsl --set-default-version 2" -Color Yellow
+            Write-Status "设置默认版本可能需要重启或手动运行: wsl --set-default-version 2" -Color Yellow
         }
     }
 
     # 4. 安装发行版 (Debian 12)
     if (-not $NoDistro -and $build -ge $MinimumBuildForWSLInstall) {
-        Write-Status "正在安装默认发行版: $DefaultDistro..." -Color Cyan
-        Write-Status "这可能需要几分钟，请不要关闭窗口。" -Color Gray
-        Start-Process wsl.exe -ArgumentList "--install -d $DefaultDistro --no-launch" -Wait | Out-Null
-        Write-Status "$DefaultDistro 安装请求已发送。" -Color Green
+        Write-Status "正在检查发行版状态..." -Color White
+        $installedDistros = wsl.exe --list --quiet 2>$null
+        
+        if ($installedDistros -and $installedDistros -match $DefaultDistro) {
+            Write-Status "检测到已安装发行版: $DefaultDistro，跳过安装。" -Color Gray
+        } else {
+            Write-Status "正在安装默认发行版: $DefaultDistro..." -Color Cyan
+            Write-Status "这可能需要几分钟，请不要关闭窗口。" -Color Gray
+            Start-Process wsl.exe -ArgumentList "--install -d $DefaultDistro --no-launch" -Wait | Out-Null
+            Write-Status "$DefaultDistro 安装请求已发送。" -Color Green
+        }
     }
 
     Write-Status ""
