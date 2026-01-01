@@ -1,5 +1,11 @@
 # 启用 UTF-8 支持
 # 为 Windows 所有终端自动开启 UTF-8 编码支持
+# ---------------------------------------------------------
+# 相关文件:
+# - scripts/ps1/Common.ps1 (通用函数库)
+# - docs/utf8-support.md (相关文档)
+# - main.py (主入口)
+# ---------------------------------------------------------
 
 [CmdletBinding()]
 param(
@@ -11,34 +17,10 @@ param(
 
 # 退出码定义: 0=成功, 1=一般错误, 3=权限错误, 4=系统不支持
 
-#region Helper Functions
-function Write-Status {
-    param([string]$Message, [string]$Color = 'White')
-    if (-not $Silent) {
-        Write-Host $Message -ForegroundColor $Color
-    }
-}
+# 导入通用函数库
+. $PSScriptRoot\Common.ps1
 
-function Write-Warning-Message {
-    param([string]$Message)
-    Write-Host "[WARNING] $Message" -ForegroundColor Yellow
-}
-
-function Write-ErrorAndExit {
-    param([string]$Message, [int]$ExitCode = 1)
-    Write-Host "[ERROR] $Message" -ForegroundColor Red
-    if (-not $Headless -and -not $env:TOOLBOX_TMP_DIR) { pause }
-    exit $ExitCode
-}
-
-function Wait-OrPause {
-    if ($env:TOOLBOX_TMP_DIR) {
-        Start-Sleep -Seconds 3
-    } elseif (-not $Headless) {
-        pause
-    }
-}
-
+#region 本地辅助函数
 function Test-UTF8SystemSupport {
     # Windows 10 1903 (Build 18362) 及以上版本支持系统级 UTF-8
     $build = [System.Environment]::OSVersion.Version.Build
@@ -54,22 +36,13 @@ function Get-CurrentUTF8Status {
     }
     
     try {
-        # 检查系统代码页
         $codePage = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage" -ErrorAction SilentlyContinue
         $status.SystemCodePage = $codePage.ACP
-        
-        # 检查控制台输出代码页
         $status.ConsoleOutputCP = [Console]::OutputEncoding.CodePage
-        
-        # 检查 PowerShell 编码
         $status.PowerShellEncoding = $OutputEncoding.CodePage
-        
-        # 判断是否已配置 UTF-8
         $status.IsConfigured = ($status.SystemCodePage -eq "65001")
     }
-    catch {
-        # 忽略错误
-    }
+    catch {}
     
     return $status
 }
@@ -77,40 +50,28 @@ function Get-CurrentUTF8Status {
 
 #region Admin Check
 if (-not $NoAdmin) {
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Status "正在请求管理员权限..." -Color Yellow
-        $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
-        if ($Headless) { $arguments += "-Headless" }
-        if ($Silent) { $arguments += "-Silent" }
-        if ($Force) { $arguments += "-Force" }
-        $arguments += "-NoAdmin"
-        
-        Start-Process -FilePath pwsh.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Start-Process -FilePath powershell.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Write-ErrorAndExit "无法获取管理员权限" 3
+    if (-not (Test-IsAdmin)) {
+        $extraArgs = @()
+        if ($Headless) { $extraArgs += "-Headless" }
+        if ($Silent) { $extraArgs += "-Silent" }
+        if ($Force) { $extraArgs += "-Force" }
+        Request-AdminPrivilege -ScriptPath $PSCommandPath -Arguments $extraArgs
     }
 }
 #endregion
 
 #region Main Script
 try {
-    if (-not $Silent) {
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host "  Windows 终端 UTF-8 支持配置工具" -ForegroundColor Cyan
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host ""
-    }
+    Show-Banner "Windows 终端 UTF-8 支持配置工具"
 
     # 检查系统是否支持 UTF-8
     $build = [System.Environment]::OSVersion.Version.Build
     Write-Status "当前系统版本: Windows Build $build" -Color Gray
 
     if (-not (Test-UTF8SystemSupport)) {
-        Write-Warning-Message "当前系统版本 (Build $build) 不完全支持系统级 UTF-8 设置。"
-        Write-Warning-Message "系统级 UTF-8 支持需要 Windows 10 1903 (Build 18362) 或更高版本。"
-        Write-Warning-Message "将仅配置控制台和 PowerShell 的 UTF-8 设置。"
+        Write-Host "[WARNING] 当前系统版本 (Build $build) 不完全支持系统级 UTF-8 设置。" -ForegroundColor Yellow
+        Write-Host "[WARNING] 系统级 UTF-8 支持需要 Windows 10 1903 (Build 18362) 或更高版本。" -ForegroundColor Yellow
+        Write-Host "[WARNING] 将仅配置控制台和 PowerShell 的 UTF-8 设置。" -ForegroundColor Yellow
         Write-Host ""
     }
 
@@ -156,7 +117,6 @@ try {
     
     $consolePath = "HKLM:\SOFTWARE\Microsoft\Command Processor"
     try {
-        # 为 cmd.exe 添加自动 chcp 65001
         $autoRun = "chcp 65001 >nul"
         Set-ItemProperty -Path $consolePath -Name "AutoRun" -Value $autoRun -ErrorAction Stop
         $changesApplied++
@@ -170,11 +130,8 @@ try {
     Write-Status ""
     Write-Status "[3/4] 正在配置 PowerShell 默认编码..." -Color White
     
-    # Windows PowerShell 配置文件路径
     $psProfileDir = Split-Path $PROFILE.AllUsersAllHosts -Parent
     $psProfilePath = $PROFILE.AllUsersAllHosts
-    
-    # PowerShell 7 配置文件路径
     $pwshProfileDir = Join-Path $env:ProgramData "PowerShell"
     $pwshProfilePath = Join-Path $pwshProfileDir "profile.ps1"
     

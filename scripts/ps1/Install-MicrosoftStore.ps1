@@ -1,5 +1,11 @@
 # 安装 Microsoft Store
 # 为系统安装或修复微软商店组件
+# ---------------------------------------------------------
+# 相关文件:
+# - scripts/ps1/Common.ps1 (通用函数库)
+# - docs/microsoft-store.md (相关文档)
+# - main.py (主入口)
+# ---------------------------------------------------------
 
 [CmdletBinding()]
 param(
@@ -11,57 +17,24 @@ param(
 
 # 退出码定义: 0=成功, 1=一般错误, 2=网络错误, 3=权限错误
 
-#region Helper Functions
-function Write-Status {
-    param([string]$Message, [string]$Color = 'White')
-    if (-not $Silent) {
-        Write-Host $Message -ForegroundColor $Color
-    }
-}
-
-function Write-ErrorAndExit {
-    param([string]$Message, [int]$ExitCode = 1)
-    Write-Host "[ERROR] $Message" -ForegroundColor Red
-    if (-not $Headless -and -not $env:TOOLBOX_TMP_DIR) { pause }
-    exit $ExitCode
-}
-
-function Wait-OrPause {
-    if ($env:TOOLBOX_TMP_DIR) {
-        Start-Sleep -Seconds 2
-    } elseif (-not $Headless) {
-        pause
-    }
-}
-#endregion
+# 导入通用函数库
+. $PSScriptRoot\Common.ps1
 
 #region Admin Check
 if (-not $NoAdmin) {
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Status "正在请求管理员权限..." -Color Yellow
-        $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
-        if ($Headless) { $arguments += "-Headless" }
-        if ($Silent) { $arguments += "-Silent" }
-        if ($Force) { $arguments += "-Force" }
-        $arguments += "-NoAdmin"
-        
-        Start-Process -FilePath pwsh.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Start-Process -FilePath powershell.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Write-ErrorAndExit "无法获取管理员权限" 3
+    if (-not (Test-IsAdmin)) {
+        $extraArgs = @()
+        if ($Headless) { $extraArgs += "-Headless" }
+        if ($Silent) { $extraArgs += "-Silent" }
+        if ($Force) { $extraArgs += "-Force" }
+        Request-AdminPrivilege -ScriptPath $PSCommandPath -Arguments $extraArgs
     }
 }
 #endregion
 
 #region Main Script
 try {
-    if (-not $Silent) {
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host "  Microsoft Store 安装/修复脚本" -ForegroundColor Cyan
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host ""
-    }
+    Show-Banner "Microsoft Store 安装/修复脚本"
 
     # 检查现有安装
     $existingStore = Get-AppxPackage -Name "Microsoft.WindowsStore" -ErrorAction SilentlyContinue

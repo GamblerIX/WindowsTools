@@ -1,5 +1,11 @@
 # 禁用 UAC 提升提示
 # 禁用管理员操作的 UAC 弹窗提示，适用于服务器自动化管理场景
+# ---------------------------------------------------------
+# 相关文件:
+# - scripts/ps1/Common.ps1 (通用函数库)
+# - docs/uac-prompt.md (相关文档)
+# - main.py (主入口)
+# ---------------------------------------------------------
 
 [CmdletBinding()]
 param(
@@ -11,56 +17,26 @@ param(
 
 # 退出码定义: 0=成功, 1=一般错误, 3=权限错误
 
-#region Helper Functions
-function Write-Status {
-    param([string]$Message, [string]$Color = 'White')
-    if (-not $Silent) {
-        Write-Host $Message -ForegroundColor $Color
-    }
-}
-
-function Write-ErrorAndExit {
-    param([string]$Message, [int]$ExitCode = 1)
-    Write-Host "[ERROR] $Message" -ForegroundColor Red
-    if (-not $Headless -and -not $env:TOOLBOX_TMP_DIR) { pause }
-    exit $ExitCode
-}
-
-function Wait-OrPause {
-    if ($env:TOOLBOX_TMP_DIR) {
-        Start-Sleep -Seconds 3
-    } elseif (-not $Headless) {
-        pause
-    }
-}
-#endregion
+# 导入通用函数库
+. $PSScriptRoot\Common.ps1
 
 #region Admin Check
 if (-not $NoAdmin) {
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Status "正在请求管理员权限..." -Color Yellow
-        $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
-        if ($Headless) { $arguments += "-Headless" }
-        if ($Silent) { $arguments += "-Silent" }
-        if ($DisableUAC) { $arguments += "-DisableUAC" }
-        $arguments += "-NoAdmin"
-        
-        Start-Process -FilePath pwsh.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Start-Process -FilePath powershell.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Write-ErrorAndExit "无法获取管理员权限" 3
+    if (-not (Test-IsAdmin)) {
+        $extraArgs = @()
+        if ($Headless) { $extraArgs += "-Headless" }
+        if ($Silent) { $extraArgs += "-Silent" }
+        if ($DisableUAC) { $extraArgs += "-DisableUAC" }
+        Request-AdminPrivilege -ScriptPath $PSCommandPath -Arguments $extraArgs
     }
 }
 #endregion
 
 #region Main Script
 try {
+    Show-Banner "禁用 UAC 提升提示"
+    
     if (-not $Silent) {
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host "  禁用 UAC 提升提示" -ForegroundColor Cyan
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host ""
         Write-Host "⚠ 安全提示: 此操作会降低系统安全性，" -ForegroundColor Yellow
         Write-Host "  仅建议在受信任的服务器环境中使用。" -ForegroundColor Yellow
         Write-Host ""
@@ -73,7 +49,6 @@ try {
     # 步骤 1: 禁用 UAC 提升提示 (管理员无需确认)
     Write-Status "[1/$totalSteps] 正在禁用 UAC 提升提示..." -Color White
     try {
-        # ConsentPromptBehaviorAdmin = 0: 不提示直接提升
         Set-ItemProperty -Path $regPath -Name "ConsentPromptBehaviorAdmin" -Value 0 -Type DWord -ErrorAction Stop
         Write-Status "  ✓ UAC 提升提示已禁用 (ConsentPromptBehaviorAdmin=0)" -Color Green
         $successCount++
@@ -85,7 +60,6 @@ try {
     # 步骤 2: 禁用安全桌面提示
     Write-Status "[2/$totalSteps] 正在禁用安全桌面提示..." -Color White
     try {
-        # PromptOnSecureDesktop = 0: 不切换到安全桌面
         Set-ItemProperty -Path $regPath -Name "PromptOnSecureDesktop" -Value 0 -Type DWord -ErrorAction Stop
         Write-Status "  ✓ 安全桌面提示已禁用 (PromptOnSecureDesktop=0)" -Color Green
         $successCount++
@@ -98,7 +72,6 @@ try {
     if ($DisableUAC) {
         Write-Status "[3/$totalSteps] 正在完全禁用 UAC..." -Color White
         try {
-            # EnableLUA = 0: 完全禁用 UAC
             Set-ItemProperty -Path $regPath -Name "EnableLUA" -Value 0 -Type DWord -ErrorAction Stop
             Write-Status "  ✓ UAC 已完全禁用 (EnableLUA=0)" -Color Green
             Write-Status "  ⚠ 需要重启计算机才能生效" -Color Yellow
@@ -136,10 +109,8 @@ try {
 
     Wait-OrPause
     
-    if ($successCount -eq $totalSteps) {
+    if ($successCount -gt 0) {
         exit 0
-    } elseif ($successCount -gt 0) {
-        exit 0  # 部分成功也返回 0
     } else {
         exit 1
     }

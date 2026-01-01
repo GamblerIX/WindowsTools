@@ -1,5 +1,11 @@
 # Windows Server 安全策略优化
 # 禁用密码过期、密码复杂度检查、Ctrl+Alt+Delete 登录要求
+# ---------------------------------------------------------
+# 相关文件:
+# - scripts/ps1/Common.ps1 (通用函数库)
+# - docs/server-security.md (相关文档)
+# - main.py (主入口)
+# ---------------------------------------------------------
 
 [CmdletBinding()]
 param(
@@ -10,55 +16,25 @@ param(
 
 # 退出码定义: 0=成功, 1=一般错误, 3=权限错误
 
-#region Helper Functions
-function Write-Status {
-    param([string]$Message, [string]$Color = 'White')
-    if (-not $Silent) {
-        Write-Host $Message -ForegroundColor $Color
-    }
-}
-
-function Write-ErrorAndExit {
-    param([string]$Message, [int]$ExitCode = 1)
-    Write-Host "[ERROR] $Message" -ForegroundColor Red
-    if (-not $Headless -and -not $env:TOOLBOX_TMP_DIR) { pause }
-    exit $ExitCode
-}
-
-function Wait-OrPause {
-    if ($env:TOOLBOX_TMP_DIR) {
-        Start-Sleep -Seconds 3
-    } elseif (-not $Headless) {
-        pause
-    }
-}
-#endregion
+# 导入通用函数库
+. $PSScriptRoot\Common.ps1
 
 #region Admin Check
 if (-not $NoAdmin) {
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Status "正在请求管理员权限..." -Color Yellow
-        $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
-        if ($Headless) { $arguments += "-Headless" }
-        if ($Silent) { $arguments += "-Silent" }
-        $arguments += "-NoAdmin"
-        
-        Start-Process -FilePath pwsh.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Start-Process -FilePath powershell.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Write-ErrorAndExit "无法获取管理员权限" 3
+    if (-not (Test-IsAdmin)) {
+        $extraArgs = @()
+        if ($Headless) { $extraArgs += "-Headless" }
+        if ($Silent) { $extraArgs += "-Silent" }
+        Request-AdminPrivilege -ScriptPath $PSCommandPath -Arguments $extraArgs
     }
 }
 #endregion
 
 #region Main Script
 try {
+    Show-Banner "Windows Server 安全策略优化"
+    
     if (-not $Silent) {
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host "  Windows Server 安全策略优化" -ForegroundColor Cyan
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host ""
         Write-Host "此脚本将执行以下优化:" -ForegroundColor Yellow
         Write-Host "  • 禁用密码过期策略" -ForegroundColor White
         Write-Host "  • 禁用密码复杂度要求" -ForegroundColor White
@@ -72,14 +48,13 @@ try {
     # 步骤 1: 禁用密码过期
     Write-Status "[1/$totalSteps] 正在禁用密码过期策略..." -Color White
     try {
-        # 获取所有本地用户并设置密码永不过期
         $users = Get-LocalUser -ErrorAction Stop
         foreach ($user in $users) {
             Set-LocalUser -Name $user.Name -PasswordNeverExpires $true -ErrorAction SilentlyContinue
         }
         
-        # 同时通过 net accounts 设置最大密码期限为无限制
-        $netResult = net accounts /maxpwage:unlimited 2>&1
+        # 使用 net accounts 禁用密码过期
+        net accounts /maxpwage:unlimited | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Status "  ✓ 密码过期策略已禁用" -Color Green
             $successCount++
@@ -95,7 +70,6 @@ try {
     # 步骤 2: 禁用密码复杂度要求
     Write-Status "[2/$totalSteps] 正在禁用密码复杂度要求..." -Color White
     try {
-        # 创建临时目录
         $tempDir = Join-Path $env:TEMP "SecurityPolicyTemp"
         if (-not (Test-Path $tempDir)) {
             New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
@@ -104,55 +78,45 @@ try {
         $cfgPath = Join-Path $tempDir "secpol.cfg"
         $dbPath = Join-Path $tempDir "secedit.sdb"
         
-        # 导出当前安全策略
-        $exportResult = secedit /export /cfg $cfgPath 2>&1
+        secedit /export /cfg $cfgPath | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            throw "无法导出安全策略: $exportResult"
+            throw "无法导出安全策略，退出代码: $LASTEXITCODE"
         }
         
-        # 读取并修改安全策略
         $content = Get-Content $cfgPath -Raw -Encoding Unicode
         
-        # 禁用密码复杂度要求 (PasswordComplexity = 0)
         if ($content -match "PasswordComplexity\s*=\s*\d+") {
             $content = $content -replace "PasswordComplexity\s*=\s*\d+", "PasswordComplexity = 0"
         } else {
-            # 如果没有找到，在 [System Access] 节添加
             $content = $content -replace "(\[System Access\])", "`$1`r`nPasswordComplexity = 0"
         }
         
-        # 设置最小密码长度为 0
         if ($content -match "MinimumPasswordLength\s*=\s*\d+") {
             $content = $content -replace "MinimumPasswordLength\s*=\s*\d+", "MinimumPasswordLength = 0"
         } else {
             $content = $content -replace "(\[System Access\])", "`$1`r`nMinimumPasswordLength = 0"
         }
         
-        # 设置最大密码期限为 -1 (永不过期)
         if ($content -match "MaximumPasswordAge\s*=\s*-?\d+") {
             $content = $content -replace "MaximumPasswordAge\s*=\s*-?\d+", "MaximumPasswordAge = -1"
         } else {
             $content = $content -replace "(\[System Access\])", "`$1`r`nMaximumPasswordAge = -1"
         }
         
-        # 保存修改后的策略
         $content | Set-Content $cfgPath -Encoding Unicode -Force
         
-        # 应用新的安全策略
-        $importResult = secedit /configure /db $dbPath /cfg $cfgPath /areas SECURITYPOLICY 2>&1
+        secedit /configure /db $dbPath /cfg $cfgPath /areas SECURITYPOLICY | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Status "  ✓ 密码复杂度要求已禁用" -Color Green
             $successCount++
         } else {
-            throw "应用安全策略失败: $importResult"
+            throw "应用安全策略失败，退出代码: $LASTEXITCODE"
         }
         
-        # 清理临时文件
         Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
     catch {
         Write-Status "  ✗ 禁用密码复杂度失败: $($_.Exception.Message)" -Color Red
-        # 清理临时文件
         if (Test-Path $tempDir) {
             Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
         }
@@ -163,7 +127,6 @@ try {
     try {
         $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
         
-        # 设置 DisableCAD = 1 禁用 Ctrl+Alt+Delete
         if (Test-Path $regPath) {
             Set-ItemProperty -Path $regPath -Name "DisableCAD" -Value 1 -Type DWord -ErrorAction Stop
             Write-Status "  ✓ Ctrl+Alt+Delete 登录要求已禁用" -Color Green
@@ -204,10 +167,8 @@ try {
 
     Wait-OrPause
     
-    if ($successCount -eq $totalSteps) {
+    if ($successCount -gt 0) {
         exit 0
-    } elseif ($successCount -gt 0) {
-        exit 0  # 部分成功也返回 0
     } else {
         exit 1
     }

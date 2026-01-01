@@ -1,5 +1,11 @@
 # 安装 PowerShell 7
 # 一键安装或更新至最新稳定版 PowerShell 7
+# ---------------------------------------------------------
+# 相关文件:
+# - scripts/ps1/Common.ps1 (通用函数库)
+# - docs/powershell7.md (相关文档)
+# - main.py (主入口)
+# ---------------------------------------------------------
 
 [CmdletBinding()]
 param(
@@ -11,91 +17,17 @@ param(
 
 # 退出码定义: 0=成功, 1=一般错误, 2=网络错误, 3=权限错误
 
-#region Helper Functions
-function Write-Status {
-    param([string]$Message, [string]$Color = 'White')
-    if (-not $Silent) {
-        Write-Host $Message -ForegroundColor $Color
-    }
-}
-
-function Write-ErrorAndExit {
-    param([string]$Message, [int]$ExitCode = 1)
-    Write-Host "[ERROR] $Message" -ForegroundColor Red
-    if (-not $Headless -and -not $env:TOOLBOX_TMP_DIR) { pause }
-    exit $ExitCode
-}
-
-function Wait-OrPause {
-    if ($env:TOOLBOX_TMP_DIR) {
-        Start-Sleep -Seconds 2
-    } elseif (-not $Headless) {
-        pause
-    }
-}
-
-function Invoke-DownloadWithRetry {
-    param(
-        [string]$Url,
-        [string]$OutFile,
-        [int]$MaxRetries = 3
-    )
-    
-    $headers = @{
-        'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-    
-    for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
-        try {
-            Write-Status "下载尝试 $attempt/$MaxRetries..." -Color Gray
-            
-            $webClient = New-Object System.Net.WebClient
-            $webClient.Headers.Add('User-Agent', $headers['User-Agent'])
-            $webClient.DownloadFile($Url, $OutFile)
-            
-            if (Test-Path $OutFile) {
-                return $true
-            }
-        }
-        catch {
-            Write-Status "尝试 $attempt 失败: $($_.Exception.Message)" -Color Yellow
-            
-            if ($attempt -eq $MaxRetries) {
-                try {
-                    Write-Status "使用备用方法下载..." -Color Yellow
-                    $ProgressPreference = 'SilentlyContinue'
-                    Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -Headers $headers -TimeoutSec 300
-                    if (Test-Path $OutFile) {
-                        return $true
-                    }
-                }
-                catch {
-                    return $false
-                }
-            }
-            
-            Start-Sleep -Seconds (2 * $attempt)
-        }
-    }
-    return $false
-}
-#endregion
+# 导入通用函数库
+. $PSScriptRoot\Common.ps1
 
 #region Admin Check
 if (-not $NoAdmin) {
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Status "正在请求管理员权限..." -Color Yellow
-        $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
-        if ($Headless) { $arguments += "-Headless" }
-        if ($Silent) { $arguments += "-Silent" }
-        if ($Force) { $arguments += "-Force" }
-        $arguments += "-NoAdmin"
-        
-        Start-Process -FilePath pwsh.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Start-Process -FilePath powershell.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Write-ErrorAndExit "无法获取管理员权限" 3
+    if (-not (Test-IsAdmin)) {
+        $extraArgs = @()
+        if ($Headless) { $extraArgs += "-Headless" }
+        if ($Silent) { $extraArgs += "-Silent" }
+        if ($Force) { $extraArgs += "-Force" }
+        Request-AdminPrivilege -ScriptPath $PSCommandPath -Arguments $extraArgs
     }
 }
 #endregion
@@ -103,14 +35,8 @@ if (-not $NoAdmin) {
 #region Main Script
 try {
     $ErrorActionPreference = 'Stop'
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-    if (-not $Silent) {
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host "  PowerShell 7 安装/更新工具" -ForegroundColor Cyan
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host ""
-    }
+    Show-Banner "PowerShell 7 安装/更新工具"
 
     # 检查当前版本
     $currentVersion = $null
@@ -126,13 +52,10 @@ try {
 
     # 获取最新版本信息
     Write-Status "正在获取最新版本信息..." -Color White
-    try {
-        $api = "https://api.github.com/repos/PowerShell/PowerShell/releases/latest"
-        $headers = @{ 'User-Agent' = 'PowerShell' }
-        $release = Invoke-RestMethod -Uri $api -Headers $headers -UseBasicParsing -TimeoutSec 30
-    }
-    catch {
-        Write-ErrorAndExit "无法连接到 GitHub API: $($_.Exception.Message)" 2
+    $release = Get-GitHubLatestRelease -Owner "PowerShell" -Repo "PowerShell"
+    
+    if (-not $release) {
+        Write-ErrorAndExit "无法连接到 GitHub API" 2
     }
 
     $latestVersion = $release.tag_name -replace '^v',''

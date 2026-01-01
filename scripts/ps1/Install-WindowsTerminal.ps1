@@ -1,5 +1,11 @@
 # 安装 Windows Terminal
 # 一键安装或更新至最新稳定版 Windows Terminal
+# ---------------------------------------------------------
+# 相关文件:
+# - scripts/ps1/Common.ps1 (通用函数库)
+# - docs/windows-terminal.md (相关文档)
+# - main.py (主入口)
+# ---------------------------------------------------------
 
 [CmdletBinding()]
 param(
@@ -11,93 +17,17 @@ param(
 
 # 退出码定义: 0=成功, 1=一般错误, 2=网络错误, 3=权限错误
 
-#region Helper Functions
-function Write-Status {
-    param([string]$Message, [string]$Color = 'White')
-    if (-not $Silent) {
-        Write-Host $Message -ForegroundColor $Color
-    }
-}
-
-function Write-ErrorAndExit {
-    param([string]$Message, [int]$ExitCode = 1)
-    Write-Host "[ERROR] $Message" -ForegroundColor Red
-    if (-not $Headless -and -not $env:TOOLBOX_TMP_DIR) { pause }
-    exit $ExitCode
-}
-
-function Wait-OrPause {
-    if ($env:TOOLBOX_TMP_DIR) {
-        Start-Sleep -Seconds 2
-    } elseif (-not $Headless) {
-        pause
-    }
-}
-
-function Invoke-DownloadWithRetry {
-    param(
-        [string]$Url,
-        [string]$OutFile,
-        [int]$MaxRetries = 3
-    )
-    
-    $headers = @{
-        'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-    
-    for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
-        try {
-            Write-Status "下载尝试 $attempt/$MaxRetries..." -Color Gray
-            
-            # 优先使用 .NET WebClient（更稳定）
-            $webClient = New-Object System.Net.WebClient
-            $webClient.Headers.Add('User-Agent', $headers['User-Agent'])
-            $webClient.DownloadFile($Url, $OutFile)
-            
-            if (Test-Path $OutFile) {
-                return $true
-            }
-        }
-        catch {
-            Write-Status "尝试 $attempt 失败: $($_.Exception.Message)" -Color Yellow
-            
-            if ($attempt -eq $MaxRetries) {
-                # 最后一次尝试使用 Invoke-WebRequest
-                try {
-                    Write-Status "使用备用方法下载..." -Color Yellow
-                    $ProgressPreference = 'SilentlyContinue'
-                    Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -Headers $headers -TimeoutSec 300
-                    if (Test-Path $OutFile) {
-                        return $true
-                    }
-                }
-                catch {
-                    return $false
-                }
-            }
-            
-            Start-Sleep -Seconds (2 * $attempt)
-        }
-    }
-    return $false
-}
-#endregion
+# 导入通用函数库
+. $PSScriptRoot\Common.ps1
 
 #region Admin Check
 if (-not $NoAdmin) {
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Status "正在请求管理员权限..." -Color Yellow
-        $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
-        if ($Headless) { $arguments += "-Headless" }
-        if ($Silent) { $arguments += "-Silent" }
-        if ($Force) { $arguments += "-Force" }
-        $arguments += "-NoAdmin"
-        
-        Start-Process -FilePath pwsh.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Start-Process -FilePath powershell.exe -ArgumentList $arguments -Verb RunAs -ErrorAction SilentlyContinue
-        if ($?) { exit 0 }
-        Write-ErrorAndExit "无法获取管理员权限" 3
+    if (-not (Test-IsAdmin)) {
+        $extraArgs = @()
+        if ($Headless) { $extraArgs += "-Headless" }
+        if ($Silent) { $extraArgs += "-Silent" }
+        if ($Force) { $extraArgs += "-Force" }
+        Request-AdminPrivilege -ScriptPath $PSCommandPath -Arguments $extraArgs
     }
 }
 #endregion
@@ -105,14 +35,8 @@ if (-not $NoAdmin) {
 #region Main Script
 try {
     $ErrorActionPreference = 'Stop'
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-    if (-not $Silent) {
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host "  Windows Terminal 安装/更新工具" -ForegroundColor Cyan
-        Write-Host "============================================" -ForegroundColor Cyan
-        Write-Host ""
-    }
+    Show-Banner "Windows Terminal 安装/更新工具"
 
     # 检查当前版本
     $current = Get-AppxPackage -Name Microsoft.WindowsTerminal -ErrorAction SilentlyContinue
@@ -123,13 +47,10 @@ try {
 
     # 获取最新版本信息
     Write-Status "正在获取最新版本信息..." -Color White
-    try {
-        $api = "https://api.github.com/repos/microsoft/terminal/releases/latest"
-        $headers = @{ 'User-Agent' = 'PowerShell' }
-        $release = Invoke-RestMethod -Uri $api -Headers $headers -UseBasicParsing -TimeoutSec 30
-    }
-    catch {
-        Write-ErrorAndExit "无法连接到 GitHub API: $($_.Exception.Message)" 2
+    $release = Get-GitHubLatestRelease -Owner "microsoft" -Repo "terminal"
+    
+    if (-not $release) {
+        Write-ErrorAndExit "无法连接到 GitHub API" 2
     }
 
     $latestVersion = $release.tag_name -replace '^v',''
@@ -155,10 +76,6 @@ try {
     $osCaption = if ($osInfo) { $osInfo.Caption } else { "Windows" }
     
     # 系统版本识别
-    # Build 17763 = LTSC 2019 / Server 2019
-    # Build 19044 = LTSC 2021
-    # Build 20348 = Server 2022
-    # Build 26100 = LTSC 2024 / Server 2025
     if ($build -ge 26100) {
         $systemType = "LTSC 2024 / Server 2025"
     } elseif ($build -ge 22000) {
@@ -176,28 +93,22 @@ try {
     Write-Status "系统信息: $osCaption (Build $build)" -Color Gray
     Write-Status "识别为: $systemType" -Color Gray
     
-    # 检查最低系统要求 (Windows Terminal 需要 Build 17763+)
+    # 检查最低系统要求
     if ($build -lt 17763) {
         Write-ErrorAndExit "Windows Terminal 需要 Windows 10 1809 (Build 17763) 或更高版本。您的系统: Build $build" 1
     }
     
     # 选择正确的安装包
-    # 新版 Terminal (1.19+) 不再提供 Win10 专用包，使用统一的 msixbundle
-    # 统一包支持 Build 17763+ 的所有系统
-    
-    # 优先查找通用包（不含 Win10 或 PreinstallKit）
     $asset = $release.assets | Where-Object { 
         $_.name -match '\.msixbundle$' -and 
         $_.name -notmatch 'PreinstallKit' -and 
         $_.name -notmatch 'Win10' 
     } | Select-Object -First 1
     
-    # 如果找不到通用包，尝试 Win10 版本（兼容旧版 Terminal 发布）
     if (-not $asset) {
         $asset = $release.assets | Where-Object { $_.name -match 'Win10.*\.msixbundle$' } | Select-Object -First 1
     }
     
-    # 最后手段：任意 msixbundle
     if (-not $asset) {
         $asset = $release.assets | Where-Object { $_.name -match '\.msixbundle$' -and $_.name -notmatch 'PreinstallKit' } | Select-Object -First 1
     }
@@ -238,7 +149,6 @@ try {
     if (-not $xamlPackage) {
         Write-Status "正在安装依赖: Microsoft.UI.Xaml.2.8..." -Color Yellow
         
-        # 从 NuGet 下载 Microsoft.UI.Xaml
         $xamlNugetUrl = "https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.6"
         $xamlZipFile = Join-Path $tmpDir "Microsoft.UI.Xaml.2.8.6.zip"
         $xamlExtractDir = Join-Path $tmpDir "Microsoft.UI.Xaml"
@@ -247,11 +157,9 @@ try {
             Write-ErrorAndExit "下载 Microsoft.UI.Xaml 依赖失败" 2
         }
         
-        # 解压并安装
         if (Test-Path $xamlExtractDir) { Remove-Item $xamlExtractDir -Recurse -Force }
         Expand-Archive -Path $xamlZipFile -DestinationPath $xamlExtractDir -Force
         
-        # 查找 x64 appx 文件
         $xamlAppx = Get-ChildItem -Path $xamlExtractDir -Recurse -Filter "*.appx" | 
             Where-Object { $_.FullName -match "x64" -and $_.FullName -notmatch "arm" } | 
             Select-Object -First 1

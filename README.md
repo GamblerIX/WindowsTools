@@ -12,13 +12,6 @@
 - **Windows LTSC**: 2019, 2021, 2024
 - **Windows Server**: 2019, 2022, 2025
 
-| 组件 | LTSC 2019 | LTSC 2021 | LTSC 2024 | Server 2022/2025 |
-| :--- | :---: | :---: | :---: | :---: |
-| PowerShell 7 | ✅ | ✅ | ✅ | ✅ |
-| Windows Terminal | ✅ | ✅ | ✅ | ✅ |
-| Microsoft Store | ✅ | ✅ | ✅ | ✅ |
-| 系统优化脚本 | ✅ | ✅ | ✅ | ✅ |
-
 > **注意**：
 > 系统优化脚本仅提供基础优化，不保证所有系统都能正常工作。
 >
@@ -37,7 +30,7 @@
 5.  🔕 [**安全通知禁用**](docs/security-notifications.md): 一键关闭 Windows Security Center 的烦人通知。
 6.  🔓 [**服务器安全策略优化**](docs/server-security.md): 禁用密码过期、复杂度检查及 Ctrl+Alt+Delete 登录要求。
 7.  🛡️ [**UAC 提示禁用**](docs/uac-prompt.md): 禁用管理员操作的 UAC 弹窗提示，适用于服务器自动化场景。
-8.  🚫 [**应用拦截禁用**](docs/app-blocking.md): 全面禁用 SmartScreen、证书吊销检查等拦截机制，解决签名证书被吊销的问题。
+8.  🐧 [**WSL2 安装**](docs/wsl2.md): 一键开启 WSL2 特性、从 GitHub 安装最新版本并配置 Debian。
 
 ---
 
@@ -71,6 +64,24 @@ python main.py
   - 查看网页版：打开 `test/htmlcov/index.html`。
 
 ---
+
+## 📝 脚本开发规范
+
+所有 PowerShell 脚本必须遵循以下规范：
+
+1. **禁止交互式输入**：脚本从工具箱运行时不应有任何交互式提示（如 `Read-Host`）
+   - 必须支持 `-Headless` 参数
+   - 必须检查 `$env:TOOLBOX_TMP_DIR` 环境变量
+   - 交互式代码应包装在：`if (-not $Headless -and -not $env:TOOLBOX_TMP_DIR) { ... }`
+
+2. **使用通用模块**：所有脚本必须导入 `Common.ps1`
+   ```powershell
+   . $PSScriptRoot\Common.ps1
+   ```
+
+3. **使用 `Write-Status`**：使用 `Write-Status` 而非 `Write-Host` 以支持静默模式
+
+4. **标准参数**：所有脚本应支持 `-Headless`、`-Silent`、`-NoAdmin` 参数
 
 ## 🤖 GitHub 工作流
 
