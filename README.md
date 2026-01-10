@@ -31,6 +31,7 @@
 6.  🔓 [**服务器安全策略优化**](docs/server-security.md): 禁用密码过期、复杂度检查及 Ctrl+Alt+Delete 登录要求。
 7.  🛡️ [**UAC 提示禁用**](docs/uac-prompt.md): 禁用管理员操作的 UAC 弹窗提示，适用于服务器自动化场景。
 8.  🐧 [**WSL2 安装**](docs/wsl2.md): 一键开启 WSL2 特性、从 GitHub 安装最新版本并配置 Debian。
+9.  📝 [**Typora 右键菜单**](docs/typora-context-menu.md): 为资源管理器添加 "新建 Markdown 文件" 菜单。
 
 ---
 
