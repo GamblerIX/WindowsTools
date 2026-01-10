@@ -68,6 +68,17 @@ if ($TyporaPath) {
     Write-Status "如果菜单图标不显示，请确保 Typora 已正确安装。" -Color Gray
 }
 
+# 检查是否已存在配置
+$RegKeyMD = Get-ItemProperty -Path "Registry::HKEY_CLASSES_ROOT\.md" -Name "(default)" -ErrorAction SilentlyContinue
+$RegKeyShellNew = Test-Path "Registry::HKEY_CLASSES_ROOT\.md\ShellNew"
+
+if ($RegKeyMD.'(default)' -eq 'Typora.exe' -and $RegKeyShellNew) {
+    Write-Status "检测到右键菜单已存在配置，跳过操作。" -Color Green
+    Write-Status "如需重新配置，请手动删除 HKEY_CLASSES_ROOT\.md 下的相关项。" -Color Gray
+    Wait-OrPause
+    exit 0
+}
+
 # 定义注册表操作
 try {
     Write-Status "正在配置注册表..."
